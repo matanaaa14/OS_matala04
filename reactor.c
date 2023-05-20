@@ -5,6 +5,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <string.h>
+#include <unistd.h>
 // Event structure
 typedef struct {
     int fd;  // File descriptor or event identifier
@@ -67,6 +68,25 @@ int eventCallback2(int serverSocket) {
         // Register the client socket event
         return clientSocket;
 }
+// Callback function for handling client messages
+int handleClientMessage(int clientSocket) {
+    char buffer[1024];
+    ssize_t bytesRead = recv(clientSocket, buffer, sizeof(buffer), 0);
+    if (bytesRead == -1) {
+        perror("recv");
+        return -1;
+    } else if (bytesRead == 0) {
+        // Client has closed the connection
+        printf("Client disconnected\n");
+        close(clientSocket);
+        return -1;
+    } else {
+        buffer[bytesRead] = '\0';
+        printf("Received message from client: %s\n", buffer);
+        // You can perform further processing with the received message here
+    }
+    return 0;
+}
 // Run the reactor event loop
 void reactorRun(Reactor* reactor, int serverSocket) {
     int clientSocket;
@@ -85,7 +105,7 @@ void reactorRun(Reactor* reactor, int serverSocket) {
             if (FD_ISSET(event->fd, &readSet)) {
                 if(event->fd == serverSocket){
                     clientSocket = eventCallback2( serverSocket);
-                    reactorRegister(reactor, clientSocket, eventCallback);
+                    reactorRegister(reactor, clientSocket, handleClientMessage);
 
                 }
                 else{
