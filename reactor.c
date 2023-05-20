@@ -6,6 +6,8 @@
 #include <arpa/inet.h>
 #include <string.h>
 #include <unistd.h>
+#include <pthread.h>
+
 // Event structure
 typedef struct {
     int fd;  // File descriptor or event identifier
@@ -21,11 +23,12 @@ typedef struct {
 } Reactor;
 
 // Initialize the reactor
-void reactorInit(Reactor* reactor) {
+void* createReactor(Reactor* reactor) {
     FD_ZERO(&reactor->masterSet);
     reactor->maxFd = -1;
     reactor->events = NULL;
     reactor->numEvents = 0;
+    return reactor;
 }
 
 // Register an event with the reactor
@@ -121,7 +124,7 @@ void reactorRun(Reactor* reactor, int serverSocket) {
 
 int server(){
     Reactor reactor;
-    reactorInit(&reactor);
+    createReactor(&reactor);
 
     // Create a server socket
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -134,7 +137,7 @@ int server(){
     struct sockaddr_in serverAddress;
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = INADDR_ANY;
-    serverAddress.sin_port = htons(12345);
+    serverAddress.sin_port = htons(12347);
 
     // Bind the server socket to the address
     if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
@@ -157,21 +160,30 @@ int server(){
     return 0;
 }
 
+// Function that will be executed by the thread
+void* threadFunction() {
+    server();  // Call the server function
+    return NULL;
+}
 
 int main() {
-    server();
+    pthread_t thread;  // Thread identifier
+
+    // Create the thread
+    if (pthread_create(&thread, NULL, threadFunction, NULL) != 0) {
+        perror("pthread_create");
+        return EXIT_FAILURE;
+    }
     /*/
-    Reactor reactor;
-    reactorInit(&reactor);
-
-    // Register events
-    reactorRegister(&reactor, 0, eventCallback);
-    reactorRegister(&reactor, 1, eventCallback);
-    reactorRegister(&reactor, 2, eventCallback);
-
-    // Run the reactor
-    reactorRun(&reactor);
-
+    // Wait for the thread to finish (optional)
+    if (pthread_join(thread, NULL) != 0) {
+        perror("pthread_join");
+        return EXIT_FAILURE;
+    }/*/
+    /*/
+    while(1){
+        printf("in main\n");
+        sleep(5);
+    }/*/
     return 0;
-    /*/
 }
