@@ -7,6 +7,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
+#include <signal.h>
 
 // Event structure
 typedef struct {
@@ -22,6 +23,23 @@ typedef struct {
     int numEvents;  // Number of registered events
 } Reactor;
 
+Reactor reactor;
+
+// Signal handler function
+void handleSignal(int signal) {
+    if (signal == SIGINT) {
+        printf("Ctrl+C signal received. Exiting...\n");
+        // Perform cleanup or other necessary actions
+        // Free the allocated memory in the Reactor structure
+        for (int i = 0; i < reactor.numEvents; i++) {
+            free(reactor.events[i]);
+        }
+        free(reactor.events);
+
+        // Exit the program
+        exit(0);
+    }
+}
 // Initialize the reactor
 void* createReactor(Reactor* reactor) {
     FD_ZERO(&reactor->masterSet);
@@ -123,9 +141,9 @@ void reactorRun(Reactor* reactor, int serverSocket) {
 
 
 int server(){
-    Reactor reactor;
+   // Reactor reactor;
     createReactor(&reactor);
-
+    signal(SIGINT, handleSignal);
     // Create a server socket
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket == -1) {
@@ -133,11 +151,18 @@ int server(){
         exit(EXIT_FAILURE);
     }
     printf("serverSocket is: %d\n",serverSocket);
+    // Set the SO_REUSEADDR option
+    int reuse = 1;
+    if (setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) == -1) {
+        perror("setsockopt");
+        exit(EXIT_FAILURE);
+    }
+
     // Set up the server address
     struct sockaddr_in serverAddress;
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_addr.s_addr = INADDR_ANY;
-    serverAddress.sin_port = htons(12347);
+    serverAddress.sin_port = htons(9034);
 
     // Bind the server socket to the address
     if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
@@ -167,6 +192,9 @@ void* threadFunction() {
 }
 
 int main() {
+    // Register the signal handler
+    signal(SIGINT, handleSignal);
+
     pthread_t thread;  // Thread identifier
 
     // Create the thread
@@ -174,12 +202,12 @@ int main() {
         perror("pthread_create");
         return EXIT_FAILURE;
     }
-    /*/
+    
     // Wait for the thread to finish (optional)
     if (pthread_join(thread, NULL) != 0) {
         perror("pthread_join");
         return EXIT_FAILURE;
-    }/*/
+    }
     /*/
     while(1){
         printf("in main\n");

@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -pedantic
 
-TARGET = reactor
+TARGET = react_server
 
 .PHONY: all clean
 
