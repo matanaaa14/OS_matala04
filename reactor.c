@@ -21,36 +21,45 @@ typedef struct {
     int maxFd;  // Maximum file descriptor value
     Event** events;  // Array of events
     int numEvents;  // Number of registered events
+    int isRunning;
+    pthread_t thread;  // Thread identifier
+
 } Reactor;
 
-Reactor reactor;
+Reactor* reactor;
 
 // Signal handler function
 void handleSignal(int signal) {
     if (signal == SIGINT) {
+        stopReactor(reactor);
         printf("Ctrl+C signal received. Exiting...\n");
         // Perform cleanup or other necessary actions
         // Free the allocated memory in the Reactor structure
-        for (int i = 0; i < reactor.numEvents; i++) {
-            free(reactor.events[i]);
+        for (int i = 0; i < reactor->numEvents; i++) {
+            free(reactor->events[i]);
         }
-        free(reactor.events);
+        free(reactor->events);
 
         // Exit the program
         exit(0);
     }
 }
+
 // Initialize the reactor
-void* createReactor(Reactor* reactor) {
+void* createReactor() {
+    reactor=(Reactor*)malloc(sizeof(reactor));
+    printf("check2\n");
     FD_ZERO(&reactor->masterSet);
     reactor->maxFd = -1;
     reactor->events = NULL;
     reactor->numEvents = 0;
+    reactor->isRunning = 0;
+
     return reactor;
 }
 
 // Register an event with the reactor
-void reactorRegister(Reactor* reactor, int fd, int (*callback)(int)) {
+void addFD(Reactor* reactor, int fd, int (*callback)(int)) {
     Event* event = (Event*)malloc(sizeof(Event));
     event->fd = fd;
     event->callback = callback;
@@ -108,9 +117,17 @@ int handleClientMessage(int clientSocket) {
     }
     return 0;
 }
+void stopReactor(void* this){
+    Reactor* react = (Reactor*) this;
+    if(react->isRunning == 0)
+        return;
+    pthread_cancel(react->thread);
+    react->isRunning = 0;
+}
 // Run the reactor event loop
 void reactorRun(Reactor* reactor, int serverSocket) {
     int clientSocket;
+    reactor->isRunning = 1;
     while (1) {
         fd_set readSet = reactor->masterSet;
         int numReady = select(reactor->maxFd + 1, &readSet, NULL, NULL, NULL);
@@ -126,7 +143,7 @@ void reactorRun(Reactor* reactor, int serverSocket) {
             if (FD_ISSET(event->fd, &readSet)) {
                 if(event->fd == serverSocket){
                     clientSocket = eventCallback2( serverSocket);
-                    reactorRegister(reactor, clientSocket, handleClientMessage);
+                    addFD(reactor, clientSocket, handleClientMessage);
 
                 }
                 else{
@@ -142,7 +159,6 @@ void reactorRun(Reactor* reactor, int serverSocket) {
 
 int server(){
    // Reactor reactor;
-    createReactor(&reactor);
     signal(SIGINT, handleSignal);
     // Create a server socket
     int serverSocket = socket(AF_INET, SOCK_STREAM, 0);
@@ -177,41 +193,50 @@ int server(){
     }
 
     // Register the server socket event
-    reactorRegister(&reactor, serverSocket, eventCallback2);
+    addFD(reactor, serverSocket, eventCallback2);
 
     // Run the reactor
-    reactorRun(&reactor,serverSocket);
+    reactorRun(reactor,serverSocket);
 
     return 0;
 }
 
 // Function that will be executed by the thread
 void* threadFunction() {
+    
     server();  // Call the server function
     return NULL;
 }
+void* WaitFor(void* this){
+    Reactor* react = (Reactor* ) this;
+    // Wait for the thread to finish (optional)
+    if (pthread_join(react->thread, NULL) != 0) {
+        perror("pthread_join");
+        exit(1);
+    }
+    return NULL;
+}
+void startReactor(void* this){
 
-int main() {
-    // Register the signal handler
-    signal(SIGINT, handleSignal);
-
-    pthread_t thread;  // Thread identifier
+    Reactor* react = (Reactor*) this;
 
     // Create the thread
-    if (pthread_create(&thread, NULL, threadFunction, NULL) != 0) {
+    if (pthread_create(&react->thread, NULL, threadFunction, NULL) != 0) {
         perror("pthread_create");
-        return EXIT_FAILURE;
+        exit(1);
     }
     
-    // Wait for the thread to finish (optional)
-    if (pthread_join(thread, NULL) != 0) {
-        perror("pthread_join");
-        return EXIT_FAILURE;
-    }
-    /*/
-    while(1){
-        printf("in main\n");
-        sleep(5);
-    }/*/
+}
+int main() {
+    // Register the signal handler
+    createReactor();
+    printf("check1\n");
+
+    signal(SIGINT, handleSignal);
+    printf("check\n");
+
+    startReactor(reactor);
+    WaitFor(reactor);
+
     return 0;
 }
